@@ -14,28 +14,14 @@ The numbers above are illustrative, not a benchmark.
 
 Requires Node.js **22.19+** and the current `@earendil-works/pi-coding-agent` distribution. Tested against **pi 0.81.1**. Older releases without `ctx.mode`, `agent_settled`, or `before_provider_request` are not supported.
 
-From a local checkout:
-
 ```bash
-pi install /absolute/path/to/pi-live-stats
+pi install git:github.com/nor1c/pi-live-stats
 ```
 
-On Windows:
-
-```powershell
-pi install "C:\path\to\pi-live-stats"
-```
-
-After you push this folder as the **root of its own repository**, replace `YOUR_USERNAME` with your account:
+For a pinned tagged release:
 
 ```bash
-pi install git:github.com/YOUR_USERNAME/pi-live-stats
-```
-
-For a tagged release:
-
-```bash
-pi install git:github.com/YOUR_USERNAME/pi-live-stats@v0.1.0
+pi install git:github.com/nor1c/pi-live-stats@v0.1.0
 ```
 
 Restart pi, or run `/reload` in an open interactive session. To try the extension without changing installed packages:
@@ -124,6 +110,18 @@ node scripts/verify-pi.mjs /absolute/path/to/node_modules/@earendil-works/pi-cod
 
 This uses a fresh temporary config/work directory, invokes the real `pi install` on this checkout, discovers the installed manifest with pi's resource loader, and renders synthetic events through pi's actual TUI component system. It does not use your real settings or model credentials. It reports its temporary directory for inspection.
 
+To work on a local checkout, install it directly from the folder instead of GitHub:
+
+```bash
+pi install /absolute/path/to/pi-live-stats
+```
+
+On Windows:
+
+```powershell
+pi install "C:\path\to\pi-live-stats"
+```
+
 ## Repository layout
 
 ```text
@@ -136,16 +134,14 @@ scripts/verify-pi.mjs        Offline real-pi install/loader/TUI smoke check
 package.json                Pi package manifest (no compilation needed)
 ```
 
-To publish later, keep this entire folder as your repository root. Do not copy your surrounding `.pi/agent` directory, settings, sessions, or credentials into it. This project does not initialize, commit, publish, or push a repository automatically.
+This repository is the package root: keep it that way when contributing. Do not copy any surrounding `.pi/agent` directory, settings, sessions, or credentials into it.
 
 ## Uninstall
 
 Use the same source you installed:
 
 ```bash
-pi remove git:github.com/YOUR_USERNAME/pi-live-stats
-# or:
-pi remove /absolute/path/to/pi-live-stats
+pi remove git:github.com/nor1c/pi-live-stats
 ```
 
 Then restart pi or `/reload`.
