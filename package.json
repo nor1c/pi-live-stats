@@ -1,0 +1,26 @@
+{
+  "name": "pi-live-stats",
+  "version": "0.1.0",
+  "description": "Always-live TTFT, output tokens and tokens/second widget for the pi coding agent.",
+  "type": "module",
+  "license": "MIT",
+  "keywords": ["pi-package", "pi-extension", "ttft", "tokens-per-second", "live-stats"],
+  "files": ["extensions", "src", "test", "scripts", "README.md", "LICENSE"],
+  "pi": {
+    "extensions": ["./extensions/live-stats.ts"]
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "peerDependenciesMeta": {
+    "@earendil-works/pi-coding-agent": { "optional": true }
+  },
+  "scripts": {
+    "test": "node --experimental-strip-types --test test/*.test.mjs",
+    "demo": "node --experimental-strip-types scripts/demo.mjs",
+    "check:package": "npm pack --dry-run --ignore-scripts"
+  }
+}
