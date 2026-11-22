@@ -1,11 +1,13 @@
 # pi-live-stats
 
-Always-live **TTFT**, **tokens/second**, and **output token count** for the pi coding agent. Enabled automatically, above the editor. No dashboard to open and no command required for each prompt.
+Always-live **TTFT**, **tokens/second**, **output token count**, and **session context usage** for the pi coding agent. Enabled automatically, above the editor. No dashboard to open and no command required for each prompt.
 
 ```text
 LIVE STATS / STREAMING | call #2 | elapsed 8.35s | 50ms
 TTFT 0.68s | tok/s (1s) ~54.2 | avg tok/s ~48.9
 Output ~375 tok | request 8.35s | tools 0 | ~ = estimate
+Context 62k/200k tok | 31.0% used
+recent #1 0.71s | ~52.4 tok/s | ~410 tok | 8.90s
 ```
 
 The numbers above are illustrative, not a benchmark.
@@ -40,6 +42,8 @@ No build step, runtime downloads, API key, or extra runtime dependency. Pi loads
 - The rolling token speed drops to zero after **one second without observable output**. It does not freeze at the last speed.
 - TTFT locks once output arrives. A new model turn resets TTFT and output counts; the run elapsed timer spans turns and tools.
 - After completion, the final statistics stay visible. The timer stops when pi emits `agent_settled`.
+- The last up to **three finished requests** of this session are listed as `recent #N …` rows, newest first. History survives new agent runs and is cleared with the rest of the session state.
+- **Context usage** comes from pi's `ctx.getContextUsage()` and refreshes at turn start/end, tool end, compaction, and settlement boundaries. It shows `--` after compaction until the next assistant response supplies a fresh usage value.
 - Shutdown, reload, and session replacement clear the widget and timer. Stats are in-memory, not restored from old sessions.
 - The widget uses pi's theme, wraps to terminal width, and does not replace your footer, editor, or working indicator.
 
@@ -67,8 +71,10 @@ Accepted interval: integer **16–1000 ms**. Settings apply to this extension in
 | `tok/s (1s)` | Estimated tokens in the trailing **fixed one-second window**, using streamed character count / 4. Always marked `~`. A single chunk is not treated as a single token. Starts with a partially filled window; becomes zero during tools/completion. |
 | `avg tok/s` | Current/final output count divided by seconds from first observable output to now or `message_end`. Excludes TTFT and tool execution. Includes gaps while streaming and any finalization delay before `message_end`. |
 | Output | Current turn's output, not session total or input/cache tokens. Final positive `usage.output` replaces the estimate. |
+| Context | Session context usage from pi's `ctx.getContextUsage()`: current context tokens / the active model's context window, plus percent used. Pi may estimate trailing messages after the last reported usage, so treat it as approximate. Shows `--` when the token count is unknown (for example right after compaction). |
 | request | Time from the request hook (or turn fallback) until now/`message_end`, including TTFT. |
 | elapsed | Whole current agent run, including tool execution and automatic retries until settled. |
+| `recent #N` | The last up to three finished requests, newest first. `#N` counts requests across the whole session (the live heading's `call #N` restarts each run). Each row freezes that request's TTFT, average tok/s, output and request time; `stopped` marks aborts or incomplete ends and `error` marks errors, while finished rows carry no marker. |
 
 ### Accuracy: estimates are explicit
 

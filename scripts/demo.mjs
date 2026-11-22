@@ -3,6 +3,7 @@ import { LiveMetrics } from "../src/metrics.ts";
 import { formatLines } from "../src/view.ts";
 
 const meter = new LiveMetrics();
+meter.setContextUsage({ tokens: 62_000, contextWindow: 200_000 });
 const message = { role: "assistant", usage: { output: 0 }, content: [], stopReason: "stop" };
 let previousLines = 0;
 function draw() {

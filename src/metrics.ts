@@ -26,7 +26,30 @@ type Request = {
   reportedCharacters: number;
   finalTokens?: number;
   outcome?: "done" | "error" | "aborted";
+  recorded: boolean;
 };
+
+/** One finished main-agent request, frozen at its end. Counters only, never message text. */
+export interface HistoryEntry {
+  /** Session-wide request index; the live heading's call #N restarts each run. */
+  callNumber: number;
+  ttftMs?: number;
+  timingOrigin?: "turn" | "request";
+  outputTokens: number;
+  estimated: boolean;
+  averageTps?: number;
+  requestMs: number;
+  outcome: "done" | "error" | "aborted";
+}
+
+/** Current session context usage as reported by the host agent. Counters only. */
+export interface ContextStatus {
+  /** Estimated context tokens, or null when unknown (e.g. right after compaction). */
+  tokens: number | null;
+  contextWindow: number;
+  /** Context usage as percentage of the window, or null when tokens is unknown. */
+  percent: number | null;
+}
 
 export interface Snapshot {
   phase: Phase;
@@ -43,9 +66,12 @@ export interface Snapshot {
   requestMs: number;
   silenceMs?: number;
   tools: number;
+  history: HistoryEntry[];
+  contextUsage?: ContextStatus;
 }
 
 const WINDOW_MS = 1000;
+const MAX_HISTORY = 3;
 const nonnegative = (value: number) => Math.max(0, value);
 const validTokens = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value) && value > 0;
@@ -67,13 +93,17 @@ export class LiveMetrics {
   private phase: Phase = "idle";
   private active = false;
   private requestNumber = 0;
+  private totalRequests = 0;
   private tools = new Set<string>();
+  private history: HistoryEntry[] = [];
+  private contextUsage?: ContextStatus;
 
   constructor(clock: () => number = () => performance.now()) {
     this.clock = clock;
   }
 
-  reset(): void {
+  /** Per-run counters. History survives runs so recent calls stay comparable. */
+  private resetRun(): void {
     this.request = undefined;
     this.runStart = undefined;
     this.runEnd = undefined;
@@ -83,10 +113,35 @@ export class LiveMetrics {
     this.tools.clear();
   }
 
+  reset(): void {
+    this.resetRun();
+    this.totalRequests = 0;
+    this.history = [];
+    this.contextUsage = undefined;
+  }
+
+  /** Store the host's session context usage. Invalid or missing data clears it. */
+  setContextUsage(usage: { tokens?: number | null; contextWindow?: number } | undefined): void {
+    const window = usage?.contextWindow;
+    const contextWindow = typeof window === "number" && Number.isFinite(window) ? Math.round(window) : 0;
+    if (!usage || contextWindow <= 0) {
+      this.contextUsage = undefined;
+      return;
+    }
+    const tokens = typeof usage.tokens === "number" && Number.isFinite(usage.tokens) && usage.tokens >= 0
+      ? Math.round(usage.tokens)
+      : null;
+    this.contextUsage = {
+      tokens,
+      contextWindow,
+      percent: tokens === null ? null : (tokens / contextWindow) * 100,
+    };
+  }
+
   startAgent(): void {
     // Automatic retries can start another low-level run before agent_settled.
     if (!this.active) {
-      this.reset();
+      this.resetRun();
       this.runStart = this.clock();
     }
     this.active = true;
@@ -97,9 +152,10 @@ export class LiveMetrics {
     if (!this.active) this.startAgent();
     this.request = {
       start: this.clock(), origin: "turn", blocks: new Map(), samples: [],
-      reported: 0, reportedCharacters: 0,
+      reported: 0, reportedCharacters: 0, recorded: false,
     };
     this.requestNumber++;
+    this.totalRequests++;
     this.phase = "waiting";
   }
 
@@ -192,6 +248,7 @@ export class LiveMetrics {
     else if (message.usage?.output === 0 && this.characters() === 0) r.finalTokens = 0;
     r.outcome = message.stopReason === "error" ? "error" : message.stopReason === "aborted" ? "aborted" : "done";
     this.phase = r.outcome === "done" ? "between" : r.outcome;
+    this.recordHistory(r, r.outcome);
   }
 
   startTool(id: string): void {
@@ -220,7 +277,29 @@ export class LiveMetrics {
     this.runEnd = now;
     this.active = false;
     this.tools.clear();
+    // A request that never saw message_end ended incompletely.
+    if (this.request) this.recordHistory(this.request, "aborted");
     this.phase = this.request?.outcome ?? "done";
+  }
+
+  /** Freeze a finished request into the rolling history. Counters only, never text. */
+  private recordHistory(r: Request, outcome: "done" | "error" | "aborted"): void {
+    if (r.recorded) return;
+    r.recorded = true;
+    const end = r.end ?? this.clock();
+    const generationMs = r.first === undefined ? 0 : nonnegative(end - r.first);
+    const tokens = r.finalTokens ?? Math.ceil(r.reported + nonnegative(this.characters() - r.reportedCharacters) / 4);
+    this.history.push({
+      callNumber: this.totalRequests,
+      ttftMs: r.first === undefined ? undefined : nonnegative(r.first - r.start),
+      timingOrigin: r.origin,
+      outputTokens: tokens,
+      estimated: r.finalTokens === undefined,
+      averageTps: generationMs > 0 ? tokens / (generationMs / 1000) : undefined,
+      requestMs: nonnegative(end - r.start),
+      outcome,
+    });
+    if (this.history.length > MAX_HISTORY) this.history.shift();
   }
 
   snapshot(): Snapshot {
@@ -248,6 +327,8 @@ export class LiveMetrics {
       requestMs: r ? nonnegative((r.end ?? now) - r.start) : 0,
       silenceMs: live && samples.length ? nonnegative(now - samples[samples.length - 1]!.at) : live ? WINDOW_MS : undefined,
       tools: this.tools.size,
+      history: [...this.history],
+      contextUsage: this.contextUsage ? { ...this.contextUsage } : undefined,
     };
   }
 }

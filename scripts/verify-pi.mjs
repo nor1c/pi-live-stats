@@ -57,6 +57,7 @@ const tui = new TUI(terminal);
 let widget;
 const ctx = {
   mode: "tui", hasUI: true,
+  getContextUsage: () => ({ tokens: 50_000, contextWindow: 200_000, percent: 25 }),
   ui: {
     setWidget(key, factory) {
       assert.equal(key, "pi-live-stats");
@@ -78,6 +79,7 @@ const message = { role: "assistant", content: [], usage: { output: 0 }, stopReas
 tui.start();
 try {
   await emit("session_start");
+  assert.match(widget.render(100).join("\n"), /Context 50k\/200k tok \| 25.0% used/);
   await emit("agent_start"); await emit("turn_start"); await emit("before_provider_request", { payload: {} });
   await delay(100);
   const previous = writes;

@@ -1,10 +1,10 @@
 {
   "name": "pi-live-stats",
   "version": "0.1.0",
-  "description": "Always-live TTFT, output tokens and tokens/second widget for the pi coding agent.",
+  "description": "Always-live TTFT, output tokens, tokens/second and session context usage widget for the pi coding agent.",
   "type": "module",
   "license": "MIT",
-  "keywords": ["pi-package", "pi-extension", "ttft", "tokens-per-second", "live-stats"],
+  "keywords": ["pi-package", "pi-extension", "ttft", "tokens-per-second", "context-window", "live-stats"],
   "files": ["extensions", "src", "test", "scripts", "README.md", "LICENSE"],
   "pi": {
     "extensions": ["./extensions/live-stats.ts"]

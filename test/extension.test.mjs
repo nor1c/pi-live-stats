@@ -8,8 +8,10 @@ function harness(mode = "tui") {
   let widget;
   let renders = 0;
   const notices = [];
+  let contextUsage = { tokens: 50_000, contextWindow: 200_000, percent: 25 };
   const ctx = {
     mode, hasUI: mode === "tui" || mode === "rpc",
+    getContextUsage: () => contextUsage,
     ui: {
       setWidget(key, factory) {
         assert.equal(key, "pi-live-stats");
@@ -28,6 +30,7 @@ function harness(mode = "tui") {
     command: (args) => commands.get("live-stats").handler(args, ctx),
     text: () => widget?.render(160).join("\n"),
     renders: () => renders,
+    setContext: (usage) => { contextUsage = usage; },
     notices,
   };
 }
@@ -41,6 +44,7 @@ test("factory allocates no timers; live widget refreshes on ticks and stream eve
   assert.equal(h.renders(), 0);
   h.emit("session_start");
   const idle = h.renders();
+  assert.match(h.text(), /Context 50k\/200k tok \| 25.0% used/);
   t.mock.timers.tick(1000);
   assert.equal(h.renders(), idle);
   h.emit("agent_start"); h.emit("turn_start"); h.emit("before_provider_request");
@@ -65,6 +69,7 @@ test("factory allocates no timers; live widget refreshes on ticks and stream eve
   assert.equal(h.renders(), settled);
   assert.match(h.text(), /DONE/);
   assert.match(h.text(), /Output 10 tok/);
+  assert.match(h.text(), /recent #1/);
   h.emit("session_shutdown");
   assert.equal(h.text(), undefined);
 });
@@ -94,6 +99,25 @@ test("off/on, interval, repeat mount and shutdown leave no duplicate timers", as
   before = h.renders(); t.mock.timers.tick(1000);
   assert.equal(h.renders(), before);
   h.emit("session_shutdown");
+});
+
+test("context usage refreshes on turns, tools and compaction; omitted without host data", () => {
+  const h = harness();
+  h.emit("session_start");
+  assert.match(h.text(), /Context 50k\/200k tok \| 25.0% used/);
+  h.setContext({ tokens: 199_500, contextWindow: 200_000, percent: 99.75 });
+  h.emit("turn_start");
+  assert.match(h.text(), /Context 200k\/200k tok \| 99.8% used/);
+  h.setContext({ tokens: 123_456, contextWindow: 200_000 });
+  h.emit("tool_execution_end", { toolCallId: "a" });
+  assert.match(h.text(), /Context 123k\/200k tok \| 61.7% used/);
+  h.setContext({ tokens: null, contextWindow: 200_000, percent: null });
+  h.emit("session_compact");
+  assert.match(h.text(), /Context --\/200k tok/);
+  assert.doesNotMatch(h.text(), /% used/);
+  h.setContext({ tokens: 1000, contextWindow: 0 });
+  h.emit("turn_end");
+  assert.doesNotMatch(h.text(), /Context /);
 });
 
 for (const mode of ["rpc", "print", "json"]) {

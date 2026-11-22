@@ -21,6 +21,12 @@ export default function liveStats(pi: ExtensionAPI): void {
     if (enabled) requestRender?.();
   }
 
+  // Pi persists a finished message after extension handlers run, so read context
+  // usage on turn/tool/compaction/settle boundaries instead of message_end.
+  function refreshContext(ctx: ExtensionContext): void {
+    metrics.setContextUsage(typeof ctx.getContextUsage === "function" ? ctx.getContextUsage() : undefined);
+  }
+
   function syncTimer(): void {
     stopTimer();
     if (!enabled || !requestRender || !metrics.snapshot().active) return;
@@ -60,6 +66,7 @@ export default function liveStats(pi: ExtensionAPI): void {
   pi.on("session_start", (_event, ctx) => {
     stopTimer();
     metrics.reset();
+    refreshContext(ctx);
     mount(ctx);
   });
 
@@ -68,7 +75,7 @@ export default function liveStats(pi: ExtensionAPI): void {
     refresh();
     syncTimer();
   });
-  pi.on("turn_start", () => { metrics.startTurn(); refresh(); });
+  pi.on("turn_start", (_event, ctx) => { metrics.startTurn(); refreshContext(ctx); refresh(); });
   pi.on("before_provider_request", () => { metrics.providerRequest(); refresh(); });
   pi.on("message_update", (event) => {
     if (event.message.role !== "assistant") return;
@@ -80,11 +87,13 @@ export default function liveStats(pi: ExtensionAPI): void {
     metrics.endMessage(event.message);
     refresh();
   });
+  pi.on("turn_end", (_event, ctx) => { refreshContext(ctx); refresh(); });
   pi.on("tool_execution_start", (event) => { metrics.startTool(event.toolCallId); refresh(); });
-  pi.on("tool_execution_end", (event) => { metrics.endTool(event.toolCallId); refresh(); });
+  pi.on("tool_execution_end", (event, ctx) => { metrics.endTool(event.toolCallId); refreshContext(ctx); refresh(); });
   pi.on("session_before_compact", () => { metrics.compact(); refresh(); });
+  pi.on("session_compact", (_event, ctx) => { refreshContext(ctx); refresh(); });
   pi.on("agent_end", () => { metrics.endAgent(); refresh(); });
-  pi.on("agent_settled", () => { metrics.settle(); stopTimer(); refresh(); });
+  pi.on("agent_settled", (_event, ctx) => { metrics.settle(); refreshContext(ctx); stopTimer(); refresh(); });
 
   pi.on("session_shutdown", () => {
     stopTimer();
